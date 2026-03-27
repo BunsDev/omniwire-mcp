@@ -4,12 +4,13 @@ import { Client, type ConnectConfig } from 'ssh2';
 import { readFileSync } from 'node:fs';
 import { execFile } from 'node:child_process';
 import type { MeshNode, NodeStatus, ExecResult } from '../protocol/types.js';
-import { remoteNodes } from '../protocol/config.js';
+import { remoteNodes, getHostCandidates } from '../protocol/config.js';
 
 interface NodeConnection {
   node: MeshNode;
   client: Client;
   connected: boolean;
+  activeHost: string | null;   // which host we're connected through
   lastPing: Date | null;
   reconnecting: boolean;
   failures: number;        // consecutive failures (circuit breaker)
@@ -19,9 +20,9 @@ interface NodeConnection {
 type ReconnectCallback = (nodeId: string) => void;
 
 const MAX_OUTPUT_BYTES = 2 * 1024 * 1024; // 2MB output guard
-const STATUS_CACHE_TTL = 5000;             // 5s status cache
-const HEALTH_PING_INTERVAL = 30_000;       // 30s health pings
-const CIRCUIT_OPEN_DURATION = 60_000;      // 60s circuit breaker
+const STATUS_CACHE_TTL = 8000;             // 8s status cache (reduced SSH round-trips)
+const HEALTH_PING_INTERVAL = 45_000;       // 45s health pings (less overhead)
+const CIRCUIT_OPEN_DURATION = 30_000;      // 30s circuit breaker (recover faster)
 const CIRCUIT_FAILURE_THRESHOLD = 3;
 
 export class NodeManager {
@@ -30,26 +31,54 @@ export class NodeManager {
   private reconnectDelays: Map<string, number> = new Map();
   private statusCache: Map<string, { status: NodeStatus; at: number }> = new Map();
   private healthTimer: ReturnType<typeof setInterval> | null = null;
+  private keyCache: Map<string, Buffer> = new Map();
+
+  // Cache SSH keys to avoid repeated disk reads
+  private getKey(path: string): Buffer {
+    let key = this.keyCache.get(path);
+    if (!key) {
+      key = readFileSync(path);
+      this.keyCache.set(path, key);
+    }
+    return key;
+  }
 
   async connectAll(): Promise<void> {
     const nodes = remoteNodes();
-    await Promise.allSettled(nodes.map((node) => this.connect(node)));
+    await Promise.allSettled(nodes.map((node) => this.connectWithFallback(node)));
     this.startHealthPing();
   }
 
-  private async connect(node: MeshNode): Promise<void> {
+  // Try each host candidate (WG -> Tailscale -> Public) until one connects
+  private async connectWithFallback(node: MeshNode): Promise<void> {
+    if (node.isLocal) return;
+    const hosts = getHostCandidates(node.id);
+    for (const host of hosts) {
+      try {
+        await this.connect(node, host);
+        return;
+      } catch {
+        // try next host
+      }
+    }
+  }
+
+  private async connect(node: MeshNode, host?: string): Promise<void> {
     if (node.isLocal) return;
 
     const client = new Client();
-    const conn: NodeConnection = {
+    const existing = this.connections.get(node.id);
+    const conn: NodeConnection = existing ?? {
       node,
       client,
       connected: false,
+      activeHost: null,
       lastPing: null,
       reconnecting: false,
       failures: 0,
       circuitOpenUntil: 0,
     };
+    conn.client = client;
 
     this.connections.set(node.id, conn);
 
@@ -62,6 +91,7 @@ export class NodeManager {
       client.on('ready', () => {
         clearTimeout(timeout);
         conn.connected = true;
+        conn.activeHost = effectiveHost;
         conn.lastPing = new Date();
         resolve();
       });
@@ -74,19 +104,21 @@ export class NodeManager {
 
       client.on('close', () => {
         conn.connected = false;
+        conn.activeHost = null;
         this.scheduleReconnect(node);
       });
 
+      const effectiveHost = host ?? node.host;
       const config: ConnectConfig = {
-        host: node.host,
+        host: effectiveHost,
         port: node.port,
         username: node.user,
-        privateKey: readFileSync(node.identityFile),
+        privateKey: this.getKey(node.identityFile),
         readyTimeout: 8000,
         keepaliveInterval: 5000,
         keepaliveCountMax: 3,
         algorithms: {
-          compress: ['zlib@openssh.com', 'zlib', 'none'],
+          compress: ['none'],  // no compression � faster for small commands
         },
       };
 
@@ -99,22 +131,21 @@ export class NodeManager {
     if (!conn || conn.reconnecting) return;
 
     conn.reconnecting = true;
-    const currentDelay = this.reconnectDelays.get(node.id) ?? 1000;
+    const currentDelay = this.reconnectDelays.get(node.id) ?? 500;
     const jitter = Math.floor(Math.random() * 1000);
 
     setTimeout(async () => {
       try {
-        conn.client = new Client();
-        await this.connect(node);
+        await this.connectWithFallback(node);
         conn.reconnecting = false;
         conn.failures = 0;
         conn.circuitOpenUntil = 0;
-        this.reconnectDelays.set(node.id, 1000); // reset on success
+        this.reconnectDelays.set(node.id, 500); // reset on success
         for (const cb of this.reconnectCallbacks) cb(node.id);
       } catch {
         conn.reconnecting = false;
         // Exponential backoff: 1s → 2s → 4s → 8s → 16s → 30s cap
-        this.reconnectDelays.set(node.id, Math.min(currentDelay * 2, 30_000));
+        this.reconnectDelays.set(node.id, Math.min(currentDelay * 2, 15_000));
         this.scheduleReconnect(node);
       }
     }, currentDelay + jitter);
@@ -133,6 +164,10 @@ export class NodeManager {
   isConnected(nodeId: string): boolean {
     if (nodeId === 'windows') return true;
     return this.connections.get(nodeId)?.connected ?? false;
+  }
+
+  getActiveHost(nodeId: string): string | null {
+    return this.connections.get(nodeId)?.activeHost ?? null;
   }
 
   getOnlineNodes(): string[] {
@@ -229,7 +264,10 @@ export class NodeManager {
   // Command strings here come from the user's own terminal input, not external sources
   private execLocal(command: string, start: number): Promise<ExecResult> {
     return new Promise<ExecResult>((resolve) => {
-      execFile('bash', ['-c', command], { timeout: 30000 }, (err, stdout, stderr) => {
+      execFile('bash', ['-c', command], {
+        timeout: 60000,
+        maxBuffer: MAX_OUTPUT_BYTES,
+      }, (err, stdout, stderr) => {
         resolve({
           nodeId: 'windows',
           stdout: (stdout ?? '').trimEnd(),
@@ -373,7 +411,7 @@ export class NodeManager {
       for (const [nodeId, conn] of this.connections) {
         if (!conn.connected || conn.circuitOpenUntil > Date.now()) continue;
         const start = Date.now();
-        const result = await this.exec(nodeId, 'echo 1');
+        const result = await this.exec(nodeId, 'true');
         const elapsed = Date.now() - start;
         if (elapsed > 3000 || result.code !== 0) {
           process.stderr.write(`[health] ${nodeId} degraded (${elapsed}ms, code=${result.code})\n`);
@@ -393,5 +431,6 @@ export class NodeManager {
     }
     this.connections.clear();
     this.statusCache.clear();
+    this.keyCache.clear();
   }
 }

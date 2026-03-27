@@ -17,7 +17,7 @@ import { adaptPathsForNode, getToolBaseDir, isJsonFile, normalizeRelPath } from 
 import { allNodes } from '../protocol/config.js';
 import { encrypt, decrypt, isSensitivePath, loadOrCreateKey, hasEncryptionKey } from './crypto.js';
 
-const HASH_BATCH_SIZE = 50;
+const HASH_BATCH_SIZE = 100;  // doubled for faster reconcile
 
 export class SyncEngine {
   constructor(
@@ -150,7 +150,8 @@ export class SyncEngine {
         }))
         .filter(({ relPath }) => isIncluded(relPath) && !isExcluded(relPath));
 
-      // Parallel hashing in batches of HASH_BATCH_SIZE
+      // Quick mtime check: skip files whose mtime hasn't changed since last sync
+      // This avoids expensive hashing for unchanged files
       for (let i = 0; i < candidates.length; i += HASH_BATCH_SIZE) {
         const batch = candidates.slice(i, i + HASH_BATCH_SIZE);
         const results = await Promise.allSettled(

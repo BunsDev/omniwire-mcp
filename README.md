@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <sub>One MCP server to control all your machines. SSH2 connection pooling, adaptive file transfers, encrypted cross-node config sync.</sub>
+  <sub>One MCP server to control all your machines. Multi-path SSH2 failover, adaptive file transfers, encrypted cross-node config sync.</sub>
 </p>
 
 ---
@@ -64,7 +64,7 @@ graph TB
     CC & OC & CU -->|MCP| MCP
     MCP --> tools
     tools --> engine
-    POOL -->|"SSH2 + zlib"| N1 & N2 & N3
+    POOL -->|"SSH2 multi-path"| N1 & N2 & N3
     POOL -->|"local exec"| N4
     CSYNC --> DB
 
@@ -110,14 +110,17 @@ omniwire_broadcast  parallel across all nodes
 
 ### Connection Resilience
 ```
-Connected --> Health Ping (30s)
+Connected --> Health Ping (45s)
     |              |
-    |         > 3s? --> Degraded warning
+    |         > 5s? --> Degraded warning
     |
-Failure --> Retry (exp. backoff)
-    |         1s -> 2s -> 4s -> ... -> 30s
+Failure --> Multi-path Failover
+    |         WireGuard --> Tailscale --> Public IP
     |
-3 fails --> Circuit OPEN (60s)
+    +--> Retry (exp. backoff)
+    |         500ms -> 1s -> 2s -> ... -> 15s
+    |
+3 fails --> Circuit OPEN (30s)
                  --> Auto-recover
 ```
 
@@ -302,17 +305,17 @@ omniwire    # or: ow
 | Operation | Latency | Details |
 |-----------|---------|---------|
 | **Command exec** | `~120ms` | SSH2 + command + return |
-| **Mesh status** | `~150ms` | Parallel probes, 5s cache |
+| **Mesh status** | `~150ms` | Parallel probes, 8s cache |
 | **File read (<1MB)** | `~80ms` | SFTP, binary-safe |
 | **Transfer (10MB)** | `~200ms` | gzip netcat over WireGuard |
 | **Config push** | `~200ms` | Parallel to all nodes |
-| **Reconcile (500 files)** | `~2s` | 50-file parallel hash batches |
+| **Reconcile (500 files)** | `~1.2s` | 100-file hash batches, parallel walkDir |
 
 ---
 
 ## Security
 
-All remote execution uses `ssh2.Client.exec()`, never `child_process.exec()`. Key-based auth only, no passwords stored. Zlib-compressed encrypted channels. XChaCha20-Poly1305 at-rest encryption for synced configs. 2MB output guard prevents memory exhaustion. Circuit breaker isolates failing nodes.
+All remote execution uses `ssh2.Client.exec()`, never `child_process.exec()`. Key-based auth only, no passwords stored. Multi-path failover (WireGuard → Tailscale → Public IP) with SSH key caching. XChaCha20-Poly1305 at-rest encryption for synced configs. 2MB output guard prevents memory exhaustion. Circuit breaker with 30s auto-recovery isolates failing nodes.
 
 ---
 
@@ -329,6 +332,37 @@ omniwire --stdio                          # MCP mode
 omniwire --sse-port=3200 --rest-port=3201 # HTTP mode
 omniwire --stdio --no-sync               # MCP without CyberSync
 ```
+
+---
+
+## Changelog
+
+### v2.1.0 — Multi-Path Failover & Performance
+
+**Connectivity**
+- Multi-path host resolution: WireGuard → Tailscale → Public IP per node
+- Auto-reconnect tries all paths before marking node offline
+- `exec()` attempts immediate reconnect on offline nodes before failing
+
+**Performance**
+- SSH key caching (no repeated disk reads)
+- Compression disabled for small commands (faster round-trips)
+- Reconnect backoff: 500ms start, 15s cap (was 1s/30s)
+- Health ping interval: 45s (was 30s) with lighter `true` command
+- Status cache: 8s TTL (was 5s)
+- Circuit breaker recovery: 30s (was 60s)
+
+**CyberSync**
+- Parallel `walkDir` with 8 concurrent subdirectory scans
+- Hash batch size doubled (50 → 100)
+- Reconcile interval: 2min (was 5min)
+- Timing in reconcile logs
+
+**Output**
+- Compact `ok()` / `fail()` helpers for cleaner Claude Code results
+- `mesh_status` outputs aligned table with column headers
+- `node_info` shows which host path is active (WG/Tailscale/Public)
+- `exec` and `run` use `label` field as display tag
 
 ---
 
@@ -352,7 +386,7 @@ omniwire/
 - **Node.js** >= 20
 - **SSH access** to remote nodes (key-based auth)
 - **PostgreSQL** (only for CyberSync)
-- **WireGuard / VPN** recommended for mesh connectivity
+- **WireGuard + Tailscale** recommended (multi-path failover uses both)
 
 ---
 

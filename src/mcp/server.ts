@@ -16,10 +16,21 @@ import { openBrowser } from '../commands/browser.js';
 import { allNodes, remoteNodes, findNode, NODE_ROLES, getDefaultNodeForTask } from '../protocol/config.js';
 import { parseMeshPath } from '../protocol/paths.js';
 
+// Compact output helpers — keeps Claude Code tool results clean
+function ok(node: string, ms: number, body: string, label?: string): { content: [{ type: 'text'; text: string }] } {
+  const tag = label ?? node;
+  return { content: [{ type: 'text' as const, text: `[${tag}] (${ms}ms)
+${body}` }] };
+}
+
+function fail(msg: string): { content: [{ type: 'text'; text: string }] } {
+  return { content: [{ type: 'text' as const, text: msg }] };
+}
+
 export function createOmniWireServer(manager: NodeManager, transfer: TransferEngine): McpServer {
   const server = new McpServer({
     name: 'omniwire',
-    version: '2.2.0',
+    version: '2.1.0',
   });
 
   const shells = new ShellManager(manager);
@@ -31,7 +42,7 @@ export function createOmniWireServer(manager: NodeManager, transfer: TransferEng
     'omniwire_exec',
     'Execute a command on a specific mesh node. Defaults to auto-selecting based on command context.',
     {
-      node: z.string().optional().describe('Target node id Auto-selects if omitted.'),
+      node: z.string().optional().describe('Target node id (windows, contabo, hostinger, thinkpad). Auto-selects if omitted.'),
       command: z.string().describe('Shell command to run on the remote node via SSH'),
       timeout: z.number().optional().describe('Timeout in seconds (default 30)'),
       script: z.string().optional().describe('Multi-line script content. Sent as temp file via SFTP then executed. Use this instead of command for scripts >3 lines to keep tool calls compact.'),
@@ -39,7 +50,7 @@ export function createOmniWireServer(manager: NodeManager, transfer: TransferEng
     },
     // Remote SSH2 execution â€” manager.exec() uses ssh2 client.exec(), not child_process
     async ({ node, command, timeout, script, label }) => {
-      const nodeId = node ?? getDefaultNodeForTask('storage');
+      const nodeId = node ?? 'contabo';
       const timeoutSec = timeout ?? 30;
 
       let effectiveCmd: string;
@@ -135,10 +146,10 @@ export function createOmniWireServer(manager: NodeManager, transfer: TransferEng
   // --- Tool 5: omniwire_read_file ---
   server.tool(
     'omniwire_read_file',
-    'Read a file from any mesh node. Default node: storage node.',
+    'Read a file from any mesh node. Default node: contabo (storage).',
     {
       path: z.string().describe('Absolute file path, or "node:/path" format'),
-      node: z.string().optional().describe('Node id. Defaults to storage node.'),
+      node: z.string().optional().describe('Node id. Defaults to contabo.'),
       max_lines: z.number().optional().describe('Max lines to return (default: all)'),
     },
     async ({ path, node, max_lines }) => {
@@ -162,11 +173,11 @@ export function createOmniWireServer(manager: NodeManager, transfer: TransferEng
   // --- Tool 6: omniwire_write_file ---
   server.tool(
     'omniwire_write_file',
-    'Write/create a file on any mesh node. Default: storage node.',
+    'Write/create a file on any mesh node. Default: contabo.',
     {
       path: z.string().describe('Absolute file path, or "node:/path" format'),
       content: z.string().describe('File content to write'),
-      node: z.string().optional().describe('Node id. Defaults to storage node.'),
+      node: z.string().optional().describe('Node id. Defaults to contabo.'),
     },
     async ({ path, content, node }) => {
       let nodeId = node ?? getDefaultNodeForTask('storage');
@@ -217,7 +228,7 @@ export function createOmniWireServer(manager: NodeManager, transfer: TransferEng
     'List files in a directory on any mesh node.',
     {
       path: z.string().describe('Directory path, or "node:/path" format'),
-      node: z.string().optional().describe('Node id. Defaults to storage node.'),
+      node: z.string().optional().describe('Node id. Defaults to contabo.'),
     },
     async ({ path, node }) => {
       let nodeId = node ?? getDefaultNodeForTask('storage');
@@ -366,13 +377,13 @@ export function createOmniWireServer(manager: NodeManager, transfer: TransferEng
   // --- Tool 15: omniwire_docker ---
   server.tool(
     'omniwire_docker',
-    'Run docker commands on a node. Default: storage node.',
+    'Run docker commands on a node. Default: contabo.',
     {
       command: z.string().describe('Docker subcommand (ps, run, logs, images, etc.)'),
       node: z.string().optional().describe('Node id (default: contabo)'),
     },
     async ({ command, node }) => {
-      const nodeId = node ?? getDefaultNodeForTask('storage');
+      const nodeId = node ?? 'contabo';
       const result = await manager.exec(nodeId, `docker ${command}`);
       const text = result.code === 0 ? result.stdout : `Error: ${result.stderr}`;
       return { content: [{ type: 'text', text: `[${nodeId}] docker ${command}\n${text}` }] };
@@ -563,7 +574,7 @@ export function createOmniWireServer(manager: NodeManager, transfer: TransferEng
     'omniwire_run',
     'Execute a multi-line script on a node. The script is written to a temp file and executed, keeping tool call display compact. Use this instead of omniwire_exec for Python scripts, heredocs, or any command >3 lines.',
     {
-      node: z.string().optional().describe('Target node id. Default: storage node.'),
+      node: z.string().optional().describe('Target node id. Default: contabo.'),
       interpreter: z.enum(['bash', 'python3', 'python', 'node', 'sh']).optional().describe('Script interpreter (default: bash)'),
       script: z.string().describe('Script content (multi-line)'),
       label: z.string().optional().describe('Short description shown in tool call UI (max 60 chars)'),
@@ -571,7 +582,7 @@ export function createOmniWireServer(manager: NodeManager, transfer: TransferEng
       env: z.record(z.string(), z.string()).optional().describe('Environment variables to set'),
     },
     async ({ node, interpreter, script, label, timeout, env }) => {
-      const nodeId = node ?? getDefaultNodeForTask('storage');
+      const nodeId = node ?? 'contabo';
       const interp = interpreter ?? 'bash';
       const timeoutSec = timeout ?? 30;
       const tmpFile = `/tmp/.ow-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;

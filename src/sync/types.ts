@@ -65,6 +65,7 @@ export interface ToolManifest {
   readonly syncGlobs: readonly string[];
   readonly excludeGlobs: readonly string[];
   readonly ingestDb?: string;
+  readonly ingestDirs?: readonly string[];
 }
 
 export interface SyncDiff {
@@ -96,11 +97,11 @@ export interface SyncConfig {
 }
 
 export const DEFAULT_SYNC_CONFIG: Omit<SyncConfig, 'nodeId'> = {
-  pgHost: process.env.CYBERSYNC_PG_HOST ?? 'localhost',
-  pgPort: parseInt(process.env.CYBERSYNC_PG_PORT ?? '5432'),
-  pgDatabase: process.env.CYBERSYNC_PG_DATABASE ?? 'cybersync',
-  pgUser: process.env.CYBERSYNC_PG_USER ?? 'cybersync',
-  pgPassword: process.env.CYBERSYNC_PG_PASSWORD ?? '',
+  pgHost: '10.10.0.1',
+  pgPort: 5432,
+  pgDatabase: 'cybersync',
+  pgUser: 'cybersync',
+  pgPassword: 'cybersync',
   watchDebounceMs: 300,
-  reconcileIntervalMs: 5 * 60 * 1000,
+  reconcileIntervalMs: 2 * 60 * 1000,  // 2min (was 5min) — faster convergence
 };

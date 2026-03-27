@@ -10,6 +10,7 @@ import { SyncDB } from './db.js';
 import { SyncEngine } from './engine.js';
 import { SyncWatcher } from './watcher.js';
 import { MemoryBridge } from './memory-bridge.js';
+import { OpenClawBridge } from './openclaw-bridge.js';
 import { getManifests } from './manifest.js';
 import { NodeManager } from '../nodes/manager.js';
 import { TransferEngine } from '../nodes/transfer.js';
@@ -26,8 +27,16 @@ function parseArgs(argv: string[]): { nodeId: string; once: boolean; ingestOnly:
 }
 
 function detectNodeId(): string {
-  if (process.platform === 'win32') return 'windows';
-  return process.env.OMNIWIRE_NODE_ID ?? process.env.HOSTNAME ?? 'local';
+  const platform = process.platform;
+  if (platform === 'win32') return 'windows';
+
+  // Check hostname-based detection
+  const hostname = (process.env.HOSTNAME ?? '').toLowerCase();
+  if (hostname.includes('contabo')) return 'contabo';
+  if (hostname.includes('hostinger')) return 'hostinger';
+  if (hostname.includes('thinkpad')) return 'thinkpad';
+
+  return 'unknown';
 }
 
 async function main(): Promise<void> {
@@ -59,11 +68,19 @@ async function main(): Promise<void> {
   // Memory bridge (SQLite -> PostgreSQL)
   const bridge = new MemoryBridge(db, nodeId);
 
+  // OpenClaw knowledge bridge (filesystem -> PostgreSQL)
+  const openclawBridge = new OpenClawBridge(db, nodeId);
+  const openclawManifest = manifests.find((m) => m.tool === 'openclaw');
+
   if (ingestOnly) {
     const claudeManifest = manifests.find((m) => m.tool === 'claude-code');
     if (claudeManifest?.ingestDb) {
       const count = await bridge.ingest(claudeManifest.ingestDb);
-      process.stderr.write(`Ingested ${count} memory entries\n`);
+      process.stderr.write(`Ingested ${count} claude memory entries\n`);
+    }
+    if (openclawManifest) {
+      const count = await openclawBridge.ingest(openclawManifest.baseDir);
+      process.stderr.write(`Ingested ${count} openclaw knowledge entries\n`);
     }
     await db.close();
     manager.disconnect();
@@ -78,11 +95,15 @@ async function main(): Promise<void> {
     const result = await engine.reconcile(manifests);
     process.stderr.write(`Reconcile: pushed=${result.pushed}, pulled=${result.pulled}, conflicts=${result.conflicts}\n`);
 
-    // Also ingest memory.db
+    // Ingest memory.db + openclaw
     const claudeManifest = manifests.find((m) => m.tool === 'claude-code');
     if (claudeManifest?.ingestDb) {
       const count = await bridge.ingest(claudeManifest.ingestDb);
-      process.stderr.write(`Ingested ${count} memory entries\n`);
+      process.stderr.write(`Ingested ${count} claude memory entries\n`);
+    }
+    if (openclawManifest) {
+      const count = await openclawBridge.ingest(openclawManifest.baseDir);
+      process.stderr.write(`Ingested ${count} openclaw knowledge entries\n`);
     }
 
     await db.close();
@@ -112,11 +133,15 @@ async function main(): Promise<void> {
   const initial = await engine.reconcile(manifests);
   process.stderr.write(`Initial reconcile: pushed=${initial.pushed}, pulled=${initial.pulled}, conflicts=${initial.conflicts}\n`);
 
-  // Ingest memory.db on startup
+  // Ingest on startup: claude memory.db + openclaw filesystem
   const claudeManifest = manifests.find((m) => m.tool === 'claude-code');
   if (claudeManifest?.ingestDb) {
     const count = await bridge.ingest(claudeManifest.ingestDb);
-    process.stderr.write(`Ingested ${count} memory entries\n`);
+    process.stderr.write(`Ingested ${count} claude memory entries\n`);
+  }
+  if (openclawManifest) {
+    const count = await openclawBridge.ingest(openclawManifest.baseDir);
+    process.stderr.write(`Ingested ${count} openclaw knowledge entries\n`);
   }
 
   // Periodic reconciliation
@@ -132,13 +157,20 @@ async function main(): Promise<void> {
     }
   }, config.reconcileIntervalMs);
 
-  // Periodic memory.db ingestion (every 15 min)
+  // Periodic knowledge ingestion (every 15 min): claude memory.db + openclaw filesystem
   const memoryInterval = setInterval(async () => {
     if (claudeManifest?.ingestDb) {
       try {
         await bridge.ingest(claudeManifest.ingestDb);
       } catch {
-        // Silent fail for memory ingestion
+        // Silent fail for claude memory ingestion
+      }
+    }
+    if (openclawManifest) {
+      try {
+        await openclawBridge.ingest(openclawManifest.baseDir);
+      } catch {
+        // Silent fail for openclaw ingestion
       }
     }
   }, 15 * 60 * 1000);
@@ -164,6 +196,7 @@ async function main(): Promise<void> {
 export { SyncDB } from './db.js';
 export { SyncEngine } from './engine.js';
 export { MemoryBridge } from './memory-bridge.js';
+export { OpenClawBridge } from './openclaw-bridge.js';
 export { getManifests } from './manifest.js';
 export type { SyncConfig } from './types.js';
 export { DEFAULT_SYNC_CONFIG } from './types.js';

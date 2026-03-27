@@ -1,137 +1,80 @@
-// OmniWire mesh configuration — loaded from ~/.omniwire/mesh.json or env
+// OmniWire mesh configuration — CyberNord infrastructure
+// v2.1: Multi-path connectivity (WireGuard → Tailscale → Public IP)
 
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { readFileSync, existsSync } from 'node:fs';
 import type { MeshConfig, MeshNode, NodeRole } from './types.js';
 
 const home = homedir();
 const sshDir = join(home, '.ssh');
 
-interface MeshJsonNode {
-  id: string;
-  alias?: string;
-  host: string;
-  port?: number;
-  user: string;
-  identityFile?: string;
-  role?: NodeRole;
-  os?: 'linux' | 'windows';
-  tags?: string[];
-  isLocal?: boolean;
+// Fallback host resolution order: WireGuard → Tailscale → Public IP
+// NodeManager tries each in order until one connects
+export interface HostFallback {
+  readonly wg: string;
+  readonly tailscale?: string;
+  readonly publicIp?: string;
 }
 
-interface MeshJson {
-  nodes?: MeshJsonNode[];
-  meshSubnet?: string;
-  roles?: Record<string, NodeRole>;
-  claudePath?: string;
-}
+export const HOST_FALLBACKS: Record<string, HostFallback> = {
+  contabo:   { wg: '10.10.0.1', tailscale: '100.91.160.21',  publicIp: '37.60.251.141' },
+  hostinger: { wg: '10.10.0.2', tailscale: '100.101.239.53', publicIp: '153.92.1.5' },
+  thinkpad:  { wg: '10.10.0.4', tailscale: '100.71.34.58' },
+};
 
-function resolveIdentityFile(identityFile: string | undefined): string {
-  if (!identityFile) return '';
-  // If already absolute, return as-is
-  if (identityFile.startsWith('/') || identityFile.includes(':')) return identityFile;
-  return join(sshDir, identityFile);
-}
-
-function buildLocalNode(): MeshNode {
-  const isWindows = process.platform === 'win32';
-  return {
-    id: localNodeId(),
-    alias: isWindows ? 'local' : 'local',
+const NODES: MeshNode[] = [
+  {
+    id: 'windows',
+    alias: 'win',
     host: '127.0.0.1',
     port: 0,
-    user: isWindows ? (process.env.USERNAME ?? 'user') : (process.env.USER ?? 'user'),
+    user: 'Admin',
     identityFile: '',
-    os: isWindows ? 'windows' : 'linux',
+    os: 'windows',
     isLocal: true,
-    tags: ['local', isWindows ? 'windows' : 'linux'],
-  };
-}
+    tags: ['workstation', 'desktop'],
+  } as MeshNode,
+  {
+    id: 'contabo',
+    alias: 'c1',
+    host: '10.10.0.1',
+    port: 22,
+    user: 'root',
+    identityFile: join(sshDir, 'cybernord_contabo'),
+    os: 'linux',
+    isLocal: false,
+    tags: ['vps', 'hub', 'docker', 'primary'],
+  } as MeshNode,
+  {
+    id: 'hostinger',
+    alias: 'h1',
+    host: '10.10.0.2',
+    port: 22,
+    user: 'root',
+    identityFile: join(sshDir, 'cybernord_vps'),
+    os: 'linux',
+    isLocal: false,
+    tags: ['vps', 'secondary'],
+  } as MeshNode,
+  {
+    id: 'thinkpad',
+    alias: 'tp',
+    host: '10.10.0.4',
+    port: 22,
+    user: 'root',
+    identityFile: join(sshDir, 'cybernord_contabo'),
+    os: 'linux',
+    isLocal: false,
+    tags: ['laptop', 'mobile'],
+  } as MeshNode,
+];
 
-export function localNodeId(): string {
-  if (process.platform === 'win32') return 'windows';
-  return process.env.OMNIWIRE_NODE_ID ?? 'local';
-}
-
-function loadMeshJson(): MeshJson | null {
-  // 1. Try ~/.omniwire/mesh.json
-  const configPath = join(home, '.omniwire', 'mesh.json');
-  if (existsSync(configPath)) {
-    try {
-      const raw = readFileSync(configPath, 'utf8');
-      return JSON.parse(raw) as MeshJson;
-    } catch {
-      process.stderr.write(`[omniwire] Warning: failed to parse ${configPath}\n`);
-    }
-  }
-
-  // 2. Try OMNIWIRE_CONFIG env var (JSON string)
-  const envConfig = process.env.OMNIWIRE_CONFIG;
-  if (envConfig) {
-    try {
-      return JSON.parse(envConfig) as MeshJson;
-    } catch {
-      process.stderr.write('[omniwire] Warning: failed to parse OMNIWIRE_CONFIG env var\n');
-    }
-  }
-
-  return null;
-}
-
-function buildConfig(): { nodes: MeshNode[]; roles: Record<string, NodeRole>; meshSubnet: string; claudePath: string } {
-  const json = loadMeshJson();
-  const localNode = buildLocalNode();
-
-  if (!json || !json.nodes || json.nodes.length === 0) {
-    // Minimal fallback: local node only
-    return {
-      nodes: [localNode],
-      roles: { [localNode.id]: 'controller' },
-      meshSubnet: '10.0.0.0/24',
-      claudePath: 'claude',
-    };
-  }
-
-  const remoteNodes: MeshNode[] = json.nodes.map((n) => ({
-    id: n.id,
-    alias: n.alias ?? n.id.slice(0, 3),
-    host: n.host,
-    port: n.port ?? 22,
-    user: n.user,
-    identityFile: resolveIdentityFile(n.identityFile),
-    os: n.os ?? 'linux',
-    isLocal: n.isLocal ?? false,
-    tags: n.tags ?? [],
-  }));
-
-  // Prepend local node if not already in json
-  const hasLocal = remoteNodes.some((n) => n.isLocal);
-  const nodes = hasLocal ? remoteNodes : [localNode, ...remoteNodes];
-
-  // Build roles map: from json.roles, then fall back to per-node role fields
-  const roles: Record<string, NodeRole> = { [localNode.id]: 'controller' };
-  if (json.roles) {
-    Object.assign(roles, json.roles);
-  } else {
-    for (const n of json.nodes) {
-      if (n.role) roles[n.id] = n.role;
-    }
-  }
-
-  return {
-    nodes,
-    roles,
-    meshSubnet: json.meshSubnet ?? '10.0.0.0/24',
-    claudePath: json.claudePath ?? 'claude',
-  };
-}
-
-const _config = buildConfig();
-const NODES = _config.nodes;
-
-export const NODE_ROLES: Record<string, NodeRole> = _config.roles;
+export const NODE_ROLES: Record<string, NodeRole> = {
+  windows: 'controller',
+  contabo: 'storage',
+  hostinger: 'compute',
+  thinkpad: 'gpu+browser',
+};
 
 export function getNodeForRole(role: NodeRole): MeshNode | undefined {
   const id = Object.entries(NODE_ROLES).find(([, r]) => r === role)?.[0];
@@ -140,18 +83,18 @@ export function getNodeForRole(role: NodeRole): MeshNode | undefined {
 
 export function getDefaultNodeForTask(task: 'storage' | 'browser' | 'compute' | 'local'): string {
   switch (task) {
-    case 'storage': return getNodeForRole('storage')?.id ?? localNodeId();
-    case 'browser': return getNodeForRole('gpu+browser')?.id ?? localNodeId();
-    case 'compute': return getNodeForRole('compute')?.id ?? getNodeForRole('storage')?.id ?? localNodeId();
-    case 'local': return localNodeId();
+    case 'storage': return 'contabo';
+    case 'browser': return 'thinkpad';
+    case 'compute': return 'contabo';
+    case 'local': return 'windows';
   }
 }
 
 export const CONFIG: MeshConfig = {
   nodes: NODES,
   defaultNode: 'local',
-  meshSubnet: _config.meshSubnet,
-  claudePath: _config.claudePath,
+  meshSubnet: '10.10.0.0/24',
+  claudePath: 'claude',
 };
 
 export function findNode(query: string): MeshNode | undefined {
@@ -167,4 +110,14 @@ export function remoteNodes(): MeshNode[] {
 
 export function allNodes(): MeshNode[] {
   return [...CONFIG.nodes];
+}
+
+// Get ordered list of hosts to try for a node
+export function getHostCandidates(nodeId: string): string[] {
+  const fb = HOST_FALLBACKS[nodeId];
+  if (!fb) return [NODES.find((n) => n.id === nodeId)?.host ?? ''];
+  const hosts = [fb.wg];
+  if (fb.tailscale) hosts.push(fb.tailscale);
+  if (fb.publicIp) hosts.push(fb.publicIp);
+  return hosts;
 }
