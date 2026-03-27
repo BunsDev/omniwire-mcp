@@ -99,9 +99,9 @@ export interface SyncConfig {
 export const DEFAULT_SYNC_CONFIG: Omit<SyncConfig, 'nodeId'> = {
   pgHost: '10.10.0.1',
   pgPort: 5432,
-  pgDatabase: 'cybersync',
-  pgUser: 'cybersync',
-  pgPassword: 'cybersync',
+  pgDatabase: 'cyberbase',
+  pgUser: 'cyberbase',
+  pgPassword: 'cyberbase',
   watchDebounceMs: 300,
   reconcileIntervalMs: 2 * 60 * 1000,  // 2min (was 5min) — faster convergence
 };

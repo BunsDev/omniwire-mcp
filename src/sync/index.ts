@@ -200,6 +200,7 @@ export { OpenClawBridge } from './openclaw-bridge.js';
 export { getManifests } from './manifest.js';
 export type { SyncConfig } from './types.js';
 export { DEFAULT_SYNC_CONFIG } from './types.js';
+export { VaultBridge, createVaultBridge } from './vault-bridge.js';
 
 // Run if executed directly
 const isDirectRun = process.argv[1]?.endsWith('sync/index.js') || process.argv[1]?.endsWith('sync\\index.js');

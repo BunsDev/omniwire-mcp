@@ -12,6 +12,7 @@ import type { SyncConfig, SyncItem, ToolManifest, SyncDiff } from './types.js';
 import type { NodeManager } from '../nodes/manager.js';
 import type { TransferEngine } from '../nodes/transfer.js';
 import { hashBuffer, hashFile } from './hasher.js';
+import { VaultBridge } from './vault-bridge.js';
 import { categorizeFile } from './manifest.js';
 import { adaptPathsForNode, getToolBaseDir, isJsonFile, normalizeRelPath } from './paths.js';
 import { allNodes } from '../protocol/config.js';
@@ -20,12 +21,17 @@ import { encrypt, decrypt, isSensitivePath, loadOrCreateKey, hasEncryptionKey } 
 const HASH_BATCH_SIZE = 100;  // doubled for faster reconcile
 
 export class SyncEngine {
+  private vault: VaultBridge;
+
   constructor(
     private db: SyncDB,
     private config: SyncConfig,
     private manager: NodeManager,
     private transfer: TransferEngine,
-  ) {}
+    vault?: VaultBridge,
+  ) {
+    this.vault = vault ?? new VaultBridge();
+  }
 
   // Push a local file to the database (encrypts sensitive files at rest)
   async pushFile(tool: string, relPath: string, absPath: string, opts?: { skipRemotePush?: boolean }): Promise<void> {
@@ -50,6 +56,13 @@ export class SyncEngine {
 
     await this.db.upsertNodeSync(this.config.nodeId, item.id, hash);
 
+    // Mirror to Obsidian vault
+    try {
+      await this.vault.writeSyncItem(tool, relPath, data, { hash, node: this.config.nodeId });
+    } catch {
+      // Vault write failed (non-critical)
+    }
+
     if (!opts?.skipRemotePush) {
       await this.pushToRemoteNodes(item);
     }
@@ -59,6 +72,7 @@ export class SyncEngine {
   async deleteFile(tool: string, relPath: string): Promise<void> {
     await this.db.markDeleted(tool, relPath, this.config.nodeId);
     await this.db.logEvent(null, this.config.nodeId, 'delete', `Deleted ${tool}:${relPath}`);
+    try { await this.vault.deleteSyncItem(tool, relPath); } catch {}
   }
 
   // Pull pending items from DB to local filesystem (decrypts encrypted items)
@@ -198,6 +212,9 @@ export class SyncEngine {
 
     await this.db.logEvent(null, this.config.nodeId, 'reconcile',
       `Reconciled: pushed=${pushed}, pulled=${pulled}, conflicts=${conflicts}`);
+    try {
+      await this.vault.logEvent('reconcile', `pushed=${pushed} pulled=${pulled} conflicts=${conflicts}`, this.config.nodeId);
+    } catch {}
 
     return { pushed, pulled, conflicts };
   }
