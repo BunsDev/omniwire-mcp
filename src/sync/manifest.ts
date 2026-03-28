@@ -3,20 +3,19 @@
 import type { ToolManifest, ToolName } from './types.js';
 import { getToolBaseDir } from './paths.js';
 
-function manifest(tool: ToolName, os: 'windows' | 'linux', sync: string[], exclude: string[], ingestDb?: string): ToolManifest {
+function manifest(tool: ToolName, os: 'windows' | 'linux', sync: string[], exclude: string[], ingestDb?: string, ingestDirs?: string[]): ToolManifest {
   return {
     tool,
     baseDir: getToolBaseDir(tool, os),
     syncGlobs: sync,
     excludeGlobs: exclude,
     ingestDb,
+    ingestDirs,
   };
 }
 
 export function getManifests(os: 'windows' | 'linux'): readonly ToolManifest[] {
-  const home = os === 'windows'
-    ? (process.env.USERPROFILE ?? process.env.HOME ?? '').replaceAll('\\', '/')
-    : (process.env.HOME ?? '/root');
+  const home = os === 'windows' ? 'C:/Users/Admin' : '/root';
 
   return [
     manifest('claude-code', os,
@@ -71,6 +70,7 @@ export function getManifests(os: 'windows' | 'linux'): readonly ToolManifest[] {
     manifest('openclaw', os,
       [
         'agents/**/*',
+        'skills/**/*',
         'memory/**/*',
         'workspace/**/*',
         'openclaw.json',
@@ -83,7 +83,9 @@ export function getManifests(os: 'windows' | 'linux'): readonly ToolManifest[] {
         'canvas/**',
         'telegram/**',
         'devices/**',
-      ]
+      ],
+      undefined,
+      ['agents', 'skills', 'memory', 'workspace', 'identity', 'cron']
     ),
     manifest('codex', os,
       [

@@ -1,5 +1,5 @@
 // OmniWire Browser Command — opens URLs on appropriate node
-// Default: GPU/browser node (configured via mesh.json or OMNIWIRE_CONFIG)
+// Default: thinkpad (GPU + display)
 // NOTE: Uses manager.exec() which is SSH2 client channel, not child_process
 
 import type { NodeManager } from '../nodes/manager.js';

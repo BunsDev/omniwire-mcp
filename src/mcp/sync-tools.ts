@@ -7,7 +7,10 @@ import type { SyncEngine } from '../sync/engine.js';
 import type { ToolManifest } from '../sync/types.js';
 import { ALL_TOOLS } from '../sync/manifest.js';
 import { SecretsManager } from '../sync/secrets.js';
+import { CookieManager, parseCookies } from '../sync/cookies.js';
+import type { CookieFormat } from '../sync/cookies.js';
 import type { NodeManager } from '../nodes/manager.js';
+import type { TransferEngine } from '../nodes/transfer.js';
 
 export function registerSyncTools(
   server: McpServer,
@@ -16,6 +19,7 @@ export function registerSyncTools(
   manifests: readonly ToolManifest[],
   nodeId: string,
   manager?: NodeManager,
+  transfer?: TransferEngine,
 ): void {
 
   // --- Tool 23: cybersync_status ---
@@ -264,4 +268,68 @@ export function registerSyncTools(
       }
     }
   );
+
+  // -- Cookie Management --
+  const cookieMgr = new CookieManager(db, manager, transfer);
+  server.tool(
+    'omniwire_cookies',
+    'Manage browser cookies: store, retrieve, convert (JSON/Header/Netscape), sync to nodes.',
+    {
+      action: z.enum(['set', 'get', 'list', 'delete', 'import', 'export', 'sync']).describe('Action'),
+      domain: z.string().optional().describe('Cookie domain'),
+      cookies: z.string().optional().describe('Cookie data'),
+      format: z.enum(['json', 'header', 'netscape']).optional().describe('Format (default: json)'),
+      nodes: z.array(z.string()).optional().describe('Target nodes for sync'),
+    },
+    async ({ action, domain, cookies: cookieData, format: fmt, nodes: targetNodes }) => {
+      const format = (fmt ?? 'json') as CookieFormat;
+      switch (action) {
+        case 'set': {
+          if (!domain || !cookieData) return { content: [{ type: 'text', text: 'Error: domain and cookies required' }] };
+          const parsed = parseCookies(cookieData, format, domain);
+          await cookieMgr.set(domain, parsed, 'manual');
+          return { content: [{ type: 'text', text: 'Stored ' + String(parsed.length) + ' cookies for ' + domain }] };
+        }
+        case 'get': {
+          if (!domain) return { content: [{ type: 'text', text: 'Error: domain required' }] };
+          const result = await cookieMgr.get(domain, format);
+          return { content: [{ type: 'text', text: result ?? 'No cookies for ' + domain }] };
+        }
+        case 'list': {
+          const jars = await cookieMgr.list();
+          if (jars.length === 0) return { content: [{ type: 'text', text: 'No cookies stored' }] };
+          const lines = jars.map((j) => '  ' + j.domain + ': ' + j.count + ' cookies');
+          return { content: [{ type: 'text', text: 'Cookie jars:\n' + lines.join('\n') }] };
+        }
+        case 'delete': {
+          if (!domain) return { content: [{ type: 'text', text: 'Error: domain required' }] };
+          await cookieMgr.delete(domain);
+          return { content: [{ type: 'text', text: 'Deleted cookies for ' + domain }] };
+        }
+        case 'import': {
+          if (!cookieData) return { content: [{ type: 'text', text: 'Error: cookies data required' }] };
+          const results = await cookieMgr.import(cookieData, format, domain);
+          const lines = Object.entries(results).map(([d, n]) => '  ' + d + ': ' + n + ' cookies');
+          return { content: [{ type: 'text', text: 'Imported:\n' + lines.join('\n') }] };
+        }
+        case 'export': {
+          if (!domain) return { content: [{ type: 'text', text: 'Error: domain required' }] };
+          const result = await cookieMgr.get(domain, format);
+          return { content: [{ type: 'text', text: result ?? 'No cookies for ' + domain }] };
+        }
+        case 'sync': {
+          if (domain) {
+            const results = await cookieMgr.syncToNodes(domain, targetNodes);
+            const lines = Object.entries(results).map(([n, ok]) => '  ' + n + ': ' + (ok ? 'OK' : 'FAILED'));
+            return { content: [{ type: 'text', text: 'Synced ' + domain + ':\n' + lines.join('\n') }] };
+          }
+          const { synced, failed } = await cookieMgr.syncAllToNodes(targetNodes);
+          return { content: [{ type: 'text', text: 'Cookie sync: ' + synced + ' OK, ' + failed + ' failed' }] };
+        }
+        default:
+          return { content: [{ type: 'text', text: 'Unknown action: ' + action }] };
+      }
+    }
+  );
+
 }

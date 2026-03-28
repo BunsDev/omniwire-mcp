@@ -14,25 +14,22 @@ export const blue = chalk.blue;
 export const gray = chalk.gray;
 export const white = chalk.white;
 
-// Node-specific colors — auto-assigned from palette on first use
-const COLOR_PALETTE = [chalk.blue.bold, chalk.green.bold, chalk.magenta.bold, chalk.cyan.bold, chalk.yellow.bold, chalk.red.bold];
-const NODE_COLORS: Record<string, (s: string) => string> = {};
-let colorIndex = 0;
-
-function getNodeColorFn(nodeId: string): (s: string) => string {
-  if (!NODE_COLORS[nodeId]) {
-    NODE_COLORS[nodeId] = COLOR_PALETTE[colorIndex % COLOR_PALETTE.length];
-    colorIndex++;
-  }
-  return NODE_COLORS[nodeId];
-}
+// Node-specific colors
+const NODE_COLORS: Record<string, (s: string) => string> = {
+  windows: chalk.blue.bold,
+  contabo: chalk.green.bold,
+  hostinger: chalk.magenta.bold,
+  thinkpad: chalk.cyan.bold,
+};
 
 export function nodeColor(nodeId: string): string {
-  return getNodeColorFn(nodeId)(`[${nodeId}]`);
+  const colorFn = NODE_COLORS[nodeId] ?? chalk.white.bold;
+  return colorFn(`[${nodeId}]`);
 }
 
 export function nodeTag(nodeId: string): string {
-  return getNodeColorFn(nodeId)(nodeId);
+  const colorFn = NODE_COLORS[nodeId] ?? chalk.white;
+  return colorFn(nodeId);
 }
 
 // Simple ASCII table formatter
@@ -126,7 +123,10 @@ ${bold(cyan('╚═════════════════════�
 // Prompt string with node indicators
 export function prompt(onlineNodes: string[]): string {
   const indicators = onlineNodes
-    .map((id) => getNodeColorFn(id)('●'))
+    .map((id) => {
+      const colorFn = NODE_COLORS[id] ?? chalk.white;
+      return colorFn('●');
+    })
     .join('');
   return `${indicators} ${bold(cyan('omniwire'))}${dim('>')} `;
 }

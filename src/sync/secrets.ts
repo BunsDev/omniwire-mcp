@@ -39,7 +39,7 @@ function loadSecretsConfig(): SecretsConfig {
 // Uses execFile (not exec) — arguments are passed as array, not interpolated into shell
 function run(cmd: string, args: string[]): Promise<{ stdout: string; code: number }> {
   return new Promise((resolve) => {
-    execFile(cmd, args, { timeout: 15_000 }, (err, stdout) => {
+    execFile(cmd, args, { timeout: 30_000 }, (err, stdout) => {
       resolve({ stdout: (stdout ?? '').trim(), code: err ? 1 : 0 });
     });
   });
@@ -56,16 +56,18 @@ async function opGet(key: string, vault: string): Promise<string | null> {
   const { stdout, code } = await run('op', [
     'item', 'get', key,
     '--vault', vault,
-    '--fields', 'password',
-    '--format', 'json',
+    '--field', 'password',
   ]);
   if (code !== 0) return null;
-  try {
-    const parsed = JSON.parse(stdout);
-    return parsed.value ?? parsed.password ?? stdout;
-  } catch {
-    return stdout || null;
+  const trimmed = stdout.trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      return parsed.value ?? parsed.password ?? trimmed;
+    } catch { /* use raw */ }
   }
+  return trimmed;
 }
 
 async function opSet(key: string, value: string, vault: string): Promise<boolean> {
@@ -73,7 +75,7 @@ async function opSet(key: string, value: string, vault: string): Promise<boolean
   const edit = await run('op', [
     'item', 'edit', key,
     '--vault', vault,
-    `password=${value}`,
+    `password[password]=${value}`,
   ]);
   if (edit.code === 0) return true;
 
@@ -83,7 +85,7 @@ async function opSet(key: string, value: string, vault: string): Promise<boolean
     '--category', 'password',
     '--vault', vault,
     '--title', key,
-    `password=${value}`,
+    `password[password]=${value}`,
   ]);
   return create.code === 0;
 }

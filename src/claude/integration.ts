@@ -50,27 +50,21 @@ export class ClaudeIntegration {
       })
       .join('\n');
 
-    const roleLines = Object.entries(NODE_ROLES)
-      .map(([id, role]) => `- ${id} (${role})`)
-      .join('\n');
-
-    const storageNode = Object.entries(NODE_ROLES).find(([, r]) => r === 'storage')?.[0] ?? 'storage node';
-    const browserNode = Object.entries(NODE_ROLES).find(([, r]) => r === 'gpu+browser')?.[0] ?? 'gpu+browser node';
-    const computeNode = Object.entries(NODE_ROLES).find(([, r]) => r === 'compute')?.[0] ?? storageNode;
-    const controllerNode = Object.entries(NODE_ROLES).find(([, r]) => r === 'controller')?.[0] ?? 'local';
-
     return `OMNIWIRE MESH STATUS:
 Nodes:
 ${nodeList}
 
 NODE ROLES:
-${roleLines}
+- windows (controller): OmniWire host, Claude Code, REPL
+- contabo (storage): Primary storage (1.2TB), Docker host, DB, file server
+- hostinger (compute): Secondary compute, services
+- thinkpad (gpu+browser): GPU workloads, browser automation, GUI apps
 
 ROUTING DEFAULTS:
-- File storage/retrieval → ${storageNode}
-- Browser/GUI ops → ${browserNode}
-- Heavy compute → ${computeNode}
-- Local dev → ${controllerNode}
+- File storage/retrieval → contabo
+- Browser/GUI ops → thinkpad
+- Heavy compute → contabo or thinkpad
+- Local dev → windows
 
 MCP TOOLS AVAILABLE:
 You have 22 omniwire_* tools for direct mesh access via MCP.
@@ -79,7 +73,8 @@ omniwire_transfer_file, omniwire_docker, omniwire_service_control, omniwire_kern
 
 LEGACY COMMANDS (still work):
 - @<node> <command>, @all <command>, @sync <file> <src> <dst>
-- Online nodes: ${online.join(', ')}`;
+- Online nodes: ${online.join(', ')}
+- Mesh subnet: 10.10.0.0/24 (WireGuard)`;
   }
 
   private buildClaudePrompt(userPrompt: string, meshContext: string): string {

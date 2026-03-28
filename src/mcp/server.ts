@@ -1,4 +1,4 @@
-// OmniWire MCP Server — 34-tool universal AI agent interface (25 core + 9 CyberSync)
+// OmniWire MCP Server â 34-tool universal AI agent interface (25 core + 9 CyberSync)
 // Works with Claude Code, OpenCode, Oh-My-OpenAgent, OpenClaw, and any MCP client
 //
 // SECURITY NOTE: This file does NOT use child_process.exec(). All remote command
@@ -16,7 +16,7 @@ import { openBrowser } from '../commands/browser.js';
 import { allNodes, remoteNodes, findNode, NODE_ROLES, getDefaultNodeForTask } from '../protocol/config.js';
 import { parseMeshPath } from '../protocol/paths.js';
 
-// Compact output helpers � keeps Claude Code tool results clean
+// Compact output helpers  keeps Claude Code tool results clean
 function ok(node: string, ms: number, body: string, label?: string): { content: [{ type: 'text'; text: string }] } {
   const tag = label ?? node;
   return { content: [{ type: 'text' as const, text: `[${tag}] (${ms}ms)
@@ -30,7 +30,7 @@ function fail(msg: string): { content: [{ type: 'text'; text: string }] } {
 export function createOmniWireServer(manager: NodeManager, transfer: TransferEngine): McpServer {
   const server = new McpServer({
     name: 'omniwire',
-    version: '2.1.0',
+    version: '2.2.0',
   });
 
   const shells = new ShellManager(manager);
@@ -48,7 +48,7 @@ export function createOmniWireServer(manager: NodeManager, transfer: TransferEng
       script: z.string().optional().describe('Multi-line script content. Sent as temp file via SFTP then executed. Use this instead of command for scripts >3 lines to keep tool calls compact.'),
       label: z.string().optional().describe('Short label for the operation (shown in tool call UI instead of full command). Max 60 chars.'),
     },
-    // Remote SSH2 execution — manager.exec() uses ssh2 client.exec(), not child_process
+    // Remote SSH2 execution â manager.exec() uses ssh2 client.exec(), not child_process
     async ({ node, command, timeout, script, label }) => {
       const nodeId = node ?? 'contabo';
       const timeoutSec = timeout ?? 30;
@@ -422,7 +422,7 @@ export function createOmniWireServer(manager: NodeManager, transfer: TransferEng
         const list = tunnels.list();
         const text = list.length === 0
           ? 'No active tunnels'
-          : list.map((t) => `${t.id}: localhost:${t.localPort} → ${t.nodeId}:${t.remotePort}`).join('\n');
+          : list.map((t) => `${t.id}: localhost:${t.localPort} â ${t.nodeId}:${t.remotePort}`).join('\n');
         return { content: [{ type: 'text', text }] };
       }
       if (act === 'close' && tunnel_id) {
@@ -431,7 +431,7 @@ export function createOmniWireServer(manager: NodeManager, transfer: TransferEng
       }
       try {
         const info = await tunnels.create(node, local_port, remote_port, remote_host);
-        return { content: [{ type: 'text', text: `Tunnel ${info.id}: localhost:${info.localPort} → ${info.nodeId}:${info.remotePort}` }] };
+        return { content: [{ type: 'text', text: `Tunnel ${info.id}: localhost:${info.localPort} â ${info.nodeId}:${info.remotePort}` }] };
       } catch (e) {
         return { content: [{ type: 'text', text: `Error: ${(e as Error).message}` }] };
       }
@@ -462,10 +462,10 @@ export function createOmniWireServer(manager: NodeManager, transfer: TransferEng
       const results = settled.map((s, i) =>
         s.status === 'fulfilled'
           ? `${s.value.dst}: OK (${s.value.speed.toFixed(1)} MB/s)`
-          : `${targets[i]}: FAILED — ${(s.reason as Error).message}`
+          : `${targets[i]}: FAILED â ${(s.reason as Error).message}`
       );
 
-      return { content: [{ type: 'text', text: `Deploy ${src_path} → ${dst_path}\n${results.join('\n')}` }] };
+      return { content: [{ type: 'text', text: `Deploy ${src_path} â ${dst_path}\n${results.join('\n')}` }] };
     }
   );
 
@@ -664,7 +664,7 @@ export function createOmniWireServer(manager: NodeManager, transfer: TransferEng
       if (check_only) {
         const check = await checkForUpdate();
         const text = check.updateAvailable
-          ? `Update available: ${check.current} → ${check.latest}\nRun omniwire_update to install.\n\nSystem: ${info.platform}/${info.arch} node ${info.nodeVersion}`
+          ? `Update available: ${check.current} â ${check.latest}\nRun omniwire_update to install.\n\nSystem: ${info.platform}/${info.arch} node ${info.nodeVersion}`
           : `Up to date (${check.current})\n\nSystem: ${info.platform}/${info.arch} node ${info.nodeVersion}`;
         return { content: [{ type: 'text', text }] };
       }

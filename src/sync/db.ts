@@ -210,6 +210,30 @@ export class SyncDB {
     return rows;
   }
 
+  // --- knowledge queries ---
+
+  async getKnowledgeByPrefix(sourceTool: string, keyPrefix: string): Promise<KnowledgeEntry[]> {
+    const { rows } = await this.pool.query(
+      `SELECT id, source_tool as "sourceTool", key, value, created_at as "createdAt", updated_at as "updatedAt"
+       FROM knowledge
+       WHERE source_tool = $1 AND key LIKE $2
+       ORDER BY key`,
+      [sourceTool, `${keyPrefix}%`]
+    );
+    return rows;
+  }
+
+  async getKnowledgeByField(sourceTool: string, field: string, value: string): Promise<KnowledgeEntry[]> {
+    const { rows } = await this.pool.query(
+      `SELECT id, source_tool as "sourceTool", key, value, created_at as "createdAt", updated_at as "updatedAt"
+       FROM knowledge
+       WHERE source_tool = $1 AND value->>$2 = $3
+       ORDER BY key`,
+      [sourceTool, field, value]
+    );
+    return rows;
+  }
+
   // --- claude_memory ---
 
   async upsertClaudeMemory(nodeId: string, key: string, value: string): Promise<void> {

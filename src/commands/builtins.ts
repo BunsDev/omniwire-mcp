@@ -253,7 +253,7 @@ async function cmdBrowser(args: string[], manager: NodeManager): Promise<string>
 async function cmdDocker(raw: string, manager: NodeManager): Promise<string> {
   const dockerCmd = raw.trim();
   if (!dockerCmd) return red('Usage: @docker <command>');
-  const nodeId = getDefaultNodeForTask('storage');
+  const nodeId = 'contabo';
   const result = await manager.exec(nodeId, `docker ${dockerCmd}`);
   return `${nodeColor(nodeId)} docker ${dockerCmd}\n${result.code === 0 ? result.stdout : red(result.stderr)}`;
 }
@@ -279,9 +279,9 @@ function cmdHelp(): string {
 ${bold('OmniWire Terminal v2.0 — Command Reference')}
 
 ${cyan('Targeting:')}
-  ${dim('(no prefix)')}     Execute on local machine
-  ${cyan('@node')} cmd       Execute on specific node by id or alias
-  ${cyan('@alias')} cmd      Use node alias (see @status for aliases)
+  ${dim('(no prefix)')}     Execute on local machine (Windows)
+  ${cyan('@contabo')} cmd    Execute on specific node (contabo/hostinger/thinkpad)
+  ${cyan('@c1')} cmd         Use node alias (c1/h1/tp/win)
   ${cyan('@all')} cmd        Broadcast to ALL nodes simultaneously
   ${cyan('@remote')} cmd     Execute on all remote nodes (skip local)
 
@@ -306,8 +306,8 @@ ${cyan('File Operations (v2):')}
   ${cyan('@mkdir')} n:/path  Create directory on node
 
 ${cyan('Services & Control:')}
-  ${cyan('@browser')} url    Open URL on GPU/browser node
-  ${cyan('@docker')} cmd     Run docker command on default storage node
+  ${cyan('@browser')} url    Open URL on thinkpad (GPU+display)
+  ${cyan('@docker')} cmd     Run docker command on contabo
   ${cyan('@shell')} node     Enter persistent interactive shell (Ctrl+] to exit)
   ${cyan('@kernel')} n cmd   Kernel operations (dmesg, sysctl, modprobe)
   ${cyan('@stream')} n cmd   Real-time streaming output (tail -f, watch)

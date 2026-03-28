@@ -1,10 +1,8 @@
-// OmniWire Sync — Windows/Linux path adaptation for JSON content
+// CyberSync — Windows/Linux path adaptation for JSON content
 
-import { homedir } from 'node:os';
-
-const WIN_HOME = homedir().replaceAll('\\', '/');
-const WIN_HOME_BACKSLASH = homedir();
-const LINUX_HOME = process.env.OMNIWIRE_LINUX_HOME ?? '/root';
+const WIN_HOME = 'C:/Users/Admin';
+const WIN_HOME_BACKSLASH = 'C:\\Users\\Admin';
+const LINUX_HOME = '/root';
 
 const PATH_MAPS: ReadonlyArray<readonly [string, string]> = [
   [WIN_HOME_BACKSLASH, LINUX_HOME],
@@ -36,9 +34,9 @@ export function getToolBaseDir(tool: string, os: 'windows' | 'linux'): string {
 
   switch (tool) {
     case 'claude-code':
-      return `${home}/.claude`;
+      return os === 'windows' ? `${home}/.claude` : `${home}/.claude`;
     case 'opencode':
-      return `${home}/.config/opencode`;
+      return os === 'windows' ? `${home}/.config/opencode` : `${home}/.config/opencode`;
     case 'openclaw':
       return `${home}/.openclaw`;
     case 'codex':

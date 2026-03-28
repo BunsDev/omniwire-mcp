@@ -27,6 +27,9 @@ const noSync = args.includes('--no-sync');
 function detectNodeId(): string {
   if (process.platform === 'win32') return 'windows';
   const hostname = (process.env.HOSTNAME ?? '').toLowerCase();
+  if (hostname.includes('contabo')) return 'contabo';
+  if (hostname.includes('hostinger')) return 'hostinger';
+  if (hostname.includes('thinkpad')) return 'thinkpad';
   return 'unknown';
 }
 
@@ -51,8 +54,8 @@ async function main(): Promise<void> {
       const manifests = getManifests(os);
       const engine = new SyncEngine(syncDb, config, manager, transfer);
 
-      registerSyncTools(server, syncDb, engine, manifests, nodeId, manager);
-      process.stderr.write(`CyberSync: 9 tools registered (node=${nodeId})\n`);
+      registerSyncTools(server, syncDb, engine, manifests, nodeId, manager, transfer);
+      process.stderr.write(`CyberSync: 12 tools registered (node=${nodeId})\n`);
     } catch (err) {
       process.stderr.write(`CyberSync init failed (continuing without sync): ${(err as Error).message}\n`);
     }
