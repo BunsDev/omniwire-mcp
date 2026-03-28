@@ -1,4 +1,4 @@
-// CyberSync — Type definitions for unified mesh sync
+// CyberSync â Type definitions for unified mesh sync
 
 export interface SyncItem {
   readonly id: string;
@@ -101,7 +101,7 @@ export const DEFAULT_SYNC_CONFIG: Omit<SyncConfig, 'nodeId'> = {
   pgPort: 5432,
   pgDatabase: 'cyberbase',
   pgUser: 'cyberbase',
-  pgPassword: 'cyberbase',
+  pgPassword: process.env.OW_PG_PASSWORD ?? 'cyberbase',
   watchDebounceMs: 300,
-  reconcileIntervalMs: 2 * 60 * 1000,  // 2min (was 5min) � faster convergence
+  reconcileIntervalMs: 2 * 60 * 1000,  // 2min (was 5min)  faster convergence
 };

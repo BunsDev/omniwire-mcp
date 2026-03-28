@@ -17,9 +17,9 @@ export interface HostFallback {
 }
 
 export const HOST_FALLBACKS: Record<string, HostFallback> = {
-  contabo:   { wg: '10.10.0.1', tailscale: '100.91.160.21',  publicIp: '37.60.251.141' },
-  hostinger: { wg: '10.10.0.2', tailscale: '100.101.239.53', publicIp: '153.92.1.5' },
-  thinkpad:  { wg: '10.10.0.4', tailscale: '100.71.34.58' },
+  contabo:   { wg: '10.10.0.1', tailscale: process.env.OW_CONTABO_TS ?? '', publicIp: process.env.OW_CONTABO_PUB ?? '' },
+  hostinger: { wg: '10.10.0.2', tailscale: process.env.OW_HOSTINGER_TS ?? '', publicIp: process.env.OW_HOSTINGER_PUB ?? '' },
+  thinkpad:  { wg: '10.10.0.4', tailscale: process.env.OW_THINKPAD_TS ?? '' },
 };
 
 const NODES: MeshNode[] = [

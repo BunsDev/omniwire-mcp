@@ -1,6 +1,6 @@
-// OmniWire Claude Integration — AI-powered mesh orchestration
+// OmniWire Claude Integration â AI-powered mesh orchestration
 // v2: streaming output, multi-turn sessions, MCP tool awareness
-// SECURITY: Uses spawn() with explicit argv — prompt goes as argument, not through shell.
+// SECURITY: Uses spawn() with explicit argv â prompt goes as argument, not through shell.
 // The manager.execAll() calls below use SSH2 client channels, not child_process.
 
 import { spawn } from 'node:child_process';
@@ -61,10 +61,10 @@ NODE ROLES:
 - thinkpad (gpu+browser): GPU workloads, browser automation, GUI apps
 
 ROUTING DEFAULTS:
-- File storage/retrieval → contabo
-- Browser/GUI ops → thinkpad
-- Heavy compute → contabo or thinkpad
-- Local dev → windows
+- File storage/retrieval â contabo
+- Browser/GUI ops â thinkpad
+- Heavy compute â contabo or thinkpad
+- Local dev â windows
 
 MCP TOOLS AVAILABLE:
 You have 22 omniwire_* tools for direct mesh access via MCP.
@@ -74,7 +74,7 @@ omniwire_transfer_file, omniwire_docker, omniwire_service_control, omniwire_kern
 LEGACY COMMANDS (still work):
 - @<node> <command>, @all <command>, @sync <file> <src> <dst>
 - Online nodes: ${online.join(', ')}
-- Mesh subnet: 10.10.0.0/24 (WireGuard)`;
+- Mesh subnet: <mesh-subnet> (WireGuard)`;
   }
 
   private buildClaudePrompt(userPrompt: string, meshContext: string): string {
@@ -91,7 +91,7 @@ After the commands, briefly explain what they do.
 USER REQUEST: ${userPrompt}`;
   }
 
-  // spawn with explicit argv — prompt goes as argument, not through shell
+  // spawn with explicit argv â prompt goes as argument, not through shell
   private runClaude(prompt: string, useSession = false): Promise<string> {
     return new Promise((resolve, reject) => {
       const spinner = new Spinner('Claude is thinking...');
@@ -114,7 +114,7 @@ USER REQUEST: ${userPrompt}`;
         const chunk = data.toString();
         stdout += chunk;
         spinner.stop();
-        process.stdout.write(dim('│ ') + chunk);
+        process.stdout.write(dim('â ') + chunk);
       });
 
       proc.stderr?.on('data', (data: Buffer) => {
@@ -169,5 +169,5 @@ USER REQUEST: ${userPrompt}`;
 }
 
 function formatClaudeResponse(response: string): string {
-  return `${cyan('┌─ Claude')}\n${dim('│')} ${response.split('\n').join(`\n${dim('│')} `)}\n${cyan('└─')}`;
+  return `${cyan('ââ Claude')}\n${dim('â')} ${response.split('\n').join(`\n${dim('â')} `)}\n${cyan('ââ')}`;
 }
